@@ -1,9 +1,11 @@
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import seaborn as sns
 import KDEpy
 import torch.nn
 from custom_modules import MaskedLinear, MaskedConv2d
+sns.set_style('whitegrid')
 
 def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
 
