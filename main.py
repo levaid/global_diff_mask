@@ -1,44 +1,33 @@
-from visualization import plot_mask_and_weight
+from visualization import plot_mask_and_weight, plot_pruner
+from local_datasets import create_dataloaders
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torchvision
-import torchvision.transforms as transforms
 import pkbar
-import numpy as np
-import neptune
 import os
 from custom_modules import MaskedConv2d, MaskedLinear
 import time
-import itertools
+import glob
+import neptune
 
 
+NEPTUNE = True
 
-# neptune.init(project_qualified_name='cucuska2/diffmask',
-#              api_token=os.environ['NEPTUNE_API_TOKEN'],
-#              )
 
+if NEPTUNE:
+    neptune.init(project_qualified_name='cucuska2/diffmask',
+                api_token=os.environ['NEPTUNE_API_TOKEN'],
+                )
+
+BATCH_SIZE = 128
+
+trainloader, testloader = create_dataloaders(batch_size=BATCH_SIZE)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device="cpu"
 
-transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-
-BATCH_SIZE = 16
-
-trainset = torchvision.datasets.CIFAR10(root='./.datasets', train=True,
-                                        download=True, transform=transform)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE,
-                                          shuffle=True, num_workers=2)
-
-testset = torchvision.datasets.CIFAR10(root='./.datasets', train=False,
-                                       download=True, transform=transform)
-testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE,
-                                         shuffle=False, num_workers=2)
 
 classes = ('plane', 'car', 'bird', 'cat',
            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -98,7 +87,7 @@ class MainNet(nn.Module):
         activations.append(torch.flatten(x, start_dim=1))
         x = F.relu(x)
         x = self.fc3(x)
-        activations.append(torch.flatten(x, start_dim=1))
+        # activations.append(torch.flatten(x, start_dim=1))
         return x, torch.cat(activations, dim=1)
 
     def set_learning_mode(self, mode: str):
@@ -115,10 +104,10 @@ class MainNet(nn.Module):
                param.set_gradient_flow(*flow)
                print(f'{name} set to {mode}')
             
-class PrunerNet(nn.Module):
-    def __init__(self):
-        super(PrunerNet, self).__init__()
-        self.fc1 = nn.Linear(8094, 120)
+class PrunerNetFlat(nn.Module):
+    def __init__(self, inputsize):
+        super(PrunerNetFlat, self).__init__()
+        self.fc1 = nn.Linear(inputsize, 120)
         self.fc2 = nn.Linear(120, 10)
 
     def forward(self, x):
@@ -127,26 +116,34 @@ class PrunerNet(nn.Module):
         x = self.fc2(x)
         return(x)
 
-PARAMS = {'num_epochs': 30, 'initial_mode': 'mask', 'epoch_to_change': 10, 'lr_net': 0.0001, 'lr_mask': 0.0001}
+PARAMS = {'num_epochs': 30, 'initial_mode': 'mask', 'epoch_to_change': 10, 'lr_net': 0.0005, 'lr_mask': 0.001, 'lr_pruner': 0.0005, 'last_layer_include': False}
 
 net = MainNet(forward_type='flatten').to(device)
-pruner_net = PrunerNet().to(device)
+
+if PARAMS['last_layer_include']:
+    pruner_net = PrunerNetFlat(inputsize=8094).to(device)
+else:
+    pruner_net = PrunerNetFlat(inputsize=8084).to(device)
 
 net.set_learning_mode(PARAMS['initial_mode'])
 
-# neptune.create_experiment(name = time.strftime('%Y-%m-%d_%H:%M:%S'),
-#                           description='still under dev',
-#                           params=PARAMS,
-#                           )
+if NEPTUNE:
+    neptune.create_experiment(name = time.strftime('%Y-%m-%d_%H:%M:%S'),
+                            description='last layer tests',
+                            params=PARAMS,
+                            )
 
 mask_parameters = [p for n, p in net.named_parameters() if 'mask' in n]
 
 criterion = nn.CrossEntropyLoss()
-optimizer_main = optim.Adam(net.parameters(), lr=PARAMS['lr_net'])
-# we are chaining the pruner parameters to modify the main network's mask
-optimizer_pruner = optim.Adam(itertools.chain(pruner_net.parameters(), mask_parameters), 
-                                              lr=PARAMS['lr_mask'])
 
+optimizer_main = optim.Adam(net.parameters(), lr=PARAMS['lr_net'])
+# we are training masks with a separate lr because they learn SLOOOOOWLY
+optimizer_mask = optim.Adam(mask_parameters, lr=PARAMS['lr_mask'])
+optimizer_pruner = optim.Adam(pruner_net.parameters(), lr=PARAMS['lr_pruner'])
+
+for image in glob.glob('run_details/*.png'):
+    os.remove(image)
 
 for epoch in range(PARAMS['num_epochs']):  # loop over the dataset multiple times
     kbar = pkbar.Kbar(target=len(trainloader), epoch=epoch, num_epochs=PARAMS['num_epochs'], width=12, always_stateful=False)
@@ -163,35 +160,38 @@ for epoch in range(PARAMS['num_epochs']):  # loop over the dataset multiple time
         # forward + backward + optimize
         outputs, activations = net(inputs)
         loss_main = criterion(outputs, labels)
-
+        outputs_by_activations = pruner_net(activations)
+        loss_pruner = criterion(outputs_by_activations, labels)
         # we step with the pruner net if we are before the midpoint
         if epoch < PARAMS['epoch_to_change']:
-            outputs_by_activations = pruner_net(activations)
-            loss_pruner = criterion(outputs_by_activations, labels)
+            
             loss_pruner.backward()
-
             optimizer_pruner.step()
+            optimizer_mask.step()
         
             # print statistics
             running_loss_pruner += loss_pruner.item()
         # else we step on the main network with the masks hopefully frozen
         else:
-            loss_main = criterion(outputs, labels)
             loss_main.backward()
             optimizer_main.step()
 
-        # neptune.log_metric('train_loss', loss.item())
+        if NEPTUNE:
+            neptune.log_metric('train_loss_main', loss_main.item())
+            neptune.log_metric('train_loss_pruner', loss_pruner)
+
         
         kbar.update(i, values=[("loss_main", loss_main), ('loss_pruner', loss_pruner)])
 
         current_iteration = i + epoch * len(trainloader)
-        if current_iteration % 500 == 0:
+        if current_iteration % 50 == 0:
             plot_mask_and_weight(net, current_iteration)
+            plot_pruner(pruner_net, current_iteration)
 
 
     if epoch == PARAMS['epoch_to_change'] - 1:
         net.set_learning_mode('weight')
-        
+
     correct_main = 0
     total = 0
     val_loss_main = 0
@@ -216,9 +216,15 @@ for epoch in range(PARAMS['num_epochs']):  # loop over the dataset multiple time
             val_loss_pruner += loss_pruner/len(testloader)
             _, predicted_pruner = torch.max(outputs_pruner.data, 1)
             correct_pruner += (predicted_pruner == labels).sum().item()
-            # neptune.log_metric('valid_loss', loss.item())
+
+            if NEPTUNE:
+                neptune.log_metric('valid_loss_main', loss_main.item())
+                neptune.log_metric('valid_loss_pruner', loss_pruner.item())
+
             
-    # neptune.log_metric('valid_acc', correct/total)
+    if NEPTUNE:
+        neptune.log_metric('valid_acc_main', correct_main/total)
+        neptune.log_metric('valid_acc_pruner', correct_pruner/total)
 
     kbar.add(1, values=[("val_loss_main", val_loss_main), ("val_acc_main", correct_main/total), ('val_loss_pruner', val_loss_pruner), ('val_acc_pruner', correct_pruner/total)])
 
