@@ -10,9 +10,17 @@ from custom_modules import MaskedConv2d, MaskedLinear
 import time
 import glob
 import neptune
+import argparse
 
 
-NEPTUNE = True
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument()
+
+PARAMS = {'num_epochs': 50, 'initial_mode': 'mask', 'epoch_to_change': 30, 'lr_net': 0.0005, 'lr_mask': 0.001, 'lr_pruner': 0.0005, 'last_layer_include': True, 'sigmoid': True}
+
+
+NEPTUNE = False
 
 
 if NEPTUNE:
@@ -35,14 +43,14 @@ classes = ('plane', 'car', 'bird', 'cat',
 
 
 class MainNet(nn.Module):
-    def __init__(self, forward_type='simple'):
+    def __init__(self, forward_type='simple', sigmoid=False):
         super(MainNet, self).__init__()
-        self.conv1 = MaskedConv2d(3, 6, 5)
+        self.conv1 = MaskedConv2d(3, 6, 5, sigmoid=sigmoid)
         self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = MaskedConv2d(6, 16, 5)
-        self.fc1 = MaskedLinear(16 * 5 * 5, 120)
-        self.fc2 = MaskedLinear(120, 84)
-        self.fc3 = MaskedLinear(84, 10)
+        self.conv2 = MaskedConv2d(6, 16, 5, sigmoid=sigmoid)
+        self.fc1 = MaskedLinear(16 * 5 * 5, 120, sigmoid=sigmoid)
+        self.fc2 = MaskedLinear(120, 84, sigmoid=sigmoid)
+        self.fc3 = MaskedLinear(84, 10, sigmoid=sigmoid)
 
         if forward_type == 'simple':
             self.forward = self.forward_simple
@@ -87,7 +95,7 @@ class MainNet(nn.Module):
         activations.append(torch.flatten(x, start_dim=1))
         x = F.relu(x)
         x = self.fc3(x)
-        # activations.append(torch.flatten(x, start_dim=1))
+        activations.append(torch.flatten(x, start_dim=1))
         return x, torch.cat(activations, dim=1)
 
     def set_learning_mode(self, mode: str):
@@ -116,9 +124,8 @@ class PrunerNetFlat(nn.Module):
         x = self.fc2(x)
         return(x)
 
-PARAMS = {'num_epochs': 30, 'initial_mode': 'mask', 'epoch_to_change': 10, 'lr_net': 0.0005, 'lr_mask': 0.001, 'lr_pruner': 0.0005, 'last_layer_include': False}
 
-net = MainNet(forward_type='flatten').to(device)
+net = MainNet(forward_type='flatten', sigmoid=PARAMS['sigmoid']).to(device)
 
 if PARAMS['last_layer_include']:
     pruner_net = PrunerNetFlat(inputsize=8094).to(device)
@@ -171,7 +178,7 @@ for epoch in range(PARAMS['num_epochs']):  # loop over the dataset multiple time
         
             # print statistics
             running_loss_pruner += loss_pruner.item()
-        # else we step on the main network with the masks hopefully frozen
+        # else we step on the main network with the masks frozen
         else:
             loss_main.backward()
             optimizer_main.step()
