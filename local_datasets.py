@@ -3,6 +3,7 @@ import torch
 from torchvision import transforms
 import torchvision
 
+
 def create_dataloaders(batch_size: int):
 
     transform_train = transforms.Compose([
@@ -18,16 +19,14 @@ def create_dataloaders(batch_size: int):
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
-    
-
     trainset = torchvision.datasets.CIFAR10(root='./.datasets', train=True,
                                             download=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                            shuffle=True, num_workers=2)
+                                              shuffle=True, num_workers=2)
 
     testset = torchvision.datasets.CIFAR10(root='./.datasets', train=False,
-                                        download=True, transform=transform_test)
+                                           download=True, transform=transform_test)
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                            shuffle=False, num_workers=2)
+                                             shuffle=False, num_workers=2)
 
     return(trainloader, testloader)

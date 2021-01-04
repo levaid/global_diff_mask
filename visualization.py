@@ -1,11 +1,14 @@
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import KDEpy
 import torch.nn
 from custom_modules import MaskedLinear, MaskedConv2d
+
+
 sns.set_style('whitegrid')
+matplotlib.use('Agg')
+
 
 def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
 
@@ -35,6 +38,7 @@ def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
     plt.xlim((-6, 6))
     plt.savefig(f'run_details/iter_weight_{currentiter}.png', dpi=150)
     plt.close('all')
+
 
 def plot_pruner(pruner: torch.nn.Module, current_iteration: int):
 
