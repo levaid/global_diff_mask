@@ -32,6 +32,17 @@ class MaskedConv2d(nn.Conv2d):
         self.mask.requires_grad = mask_grad
         self.weight.requires_grad = weight_grad
 
+    def discretize_mask(self, quantile: float, how='from_mask'):
+        assert 0 <= quantile <= 1, 'Quantile must be between 0 and 1.'
+        if how == 'from_mask':
+            threshold = torch.quantile(torch.abs(self.mask), q=quantile)
+            self.mask = (torch.abs(self.mask) > threshold).type_as(self.mask)
+        elif how == 'from_weight':
+            threshold = torch.quantile(torch.abs(self.weight), q=quantile)
+            self.mask = (torch.abs(self.weight) > threshold).type_as(self.weight)
+        else:
+            raise(NotImplementedError, 'you have to choose either `from_mask` or `from_weight`')
+
 
 class MaskedLinear(nn.Linear):
     def __init__(self, in_features: int, out_features: int, sigmoid: bool = False):
