@@ -1,8 +1,16 @@
 import subprocess
 from sklearn.model_selection import ParameterGrid
 import random
+import multiprocessing
 from multiprocessing.dummy import Pool
 import time
+import threading
+
+
+def init(lock):
+    global starting
+    starting = lock
+
 
 params_1 = {'num_first_stage': [0, 1, 2, 5, 10, 20, 50], 'initial_mode': ['weight'], 'num_second_stage': [50],
             'discretize': [True], 'discretization_quantile': [0.1, 0.3, 0.5, 0.7, 0.9], 'discretization_method': ['from_weight'], 'sigmoid': [False],
@@ -25,10 +33,13 @@ cmdline_form_arguments = [[arg for pair in [(f'--{k}', str(v)) for k, v in param
 
 
 def run_with_args(cmdline_args):
+    starting.acquire()  # no other process can get it until it is released
+    threading.Timer(10, starting.release).start()
     subprocess.run(['python', 'main.py'] + cmdline_args)
 
 
-p = Pool(3)
+p = Pool(processes=3,
+         initializer=init, initargs=[multiprocessing.Lock()])
 
 for output, error in p.imap(run_with_args, cmdline_form_arguments):
     time.sleep(3)
