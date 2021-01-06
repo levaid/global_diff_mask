@@ -2,6 +2,7 @@ import subprocess
 from sklearn.model_selection import ParameterGrid
 import random
 from multiprocessing.dummy import Pool
+import time
 
 params_1 = {'num_first_stage': [0, 1, 2, 5, 10, 20, 50], 'initial_mode': ['weight'], 'num_second_stage': [50],
             'discretize': [True], 'discretization_quantile': [0.1, 0.3, 0.5, 0.7, 0.9], 'discretization_method': ['from_weight'], 'sigmoid': [False],
@@ -30,4 +31,5 @@ def run_with_args(cmdline_args):
 p = Pool(3)
 
 for output, error in p.imap(run_with_args, cmdline_form_arguments):
+    time.sleep(3)
     pass
