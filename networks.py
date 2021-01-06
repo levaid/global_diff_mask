@@ -1,6 +1,6 @@
 from torch import nn
 from custom_modules import MaskedConv2d, MaskedLinear
-from torch import functional as F
+from torch.nn import functional as F
 import torch
 
 
@@ -72,6 +72,13 @@ class ConvNet(nn.Module):
             if type(param) in [MaskedConv2d, MaskedLinear]:
                 param.set_gradient_flow(*flow)
                 print(f'{name} set to {mode}')
+
+    def discretize_layerwise_locally(self, quantile: float, how: str):
+
+        for name, param in self.named_modules():
+            if type(param) in [MaskedConv2d, MaskedLinear]:
+                param.discretize_mask(quantile, how)
+                # print(f'{name} quantized to {mode}')
 
 
 class PrunerNetFlat(nn.Module):

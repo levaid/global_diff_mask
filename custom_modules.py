@@ -32,7 +32,7 @@ class MaskedConv2d(nn.Conv2d):
         self.mask.requires_grad = mask_grad
         self.weight.requires_grad = weight_grad
 
-    def discretize_mask(self, quantile: float, how='from_mask'):
+    def discretize_mask(self, quantile: float, how: str = 'from_mask'):
         assert 0 <= quantile <= 1, 'Quantile must be between 0 and 1.'
         if how == 'from_mask':
             threshold = torch.quantile(torch.abs(self.mask), q=quantile)
