@@ -9,7 +9,7 @@ import time
 import glob
 import neptune
 import argparse
-from networks import ConvNet, PrunerNetFlat
+from networks import ConvNet, PrunerNetFlat, get_freer_gpu
 
 
 def str2bool(v):
@@ -51,7 +51,8 @@ BATCH_SIZE = 128
 
 trainloader, testloader = create_dataloaders(batch_size=BATCH_SIZE)
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+freest_gpu = get_freer_gpu()
+device = torch.device(f"cuda:{freest_gpu}" if torch.cuda.is_available() else "cpu")
 
 net = ConvNet(forward_type='flatten', sigmoid=args['sigmoid']).to(device)
 

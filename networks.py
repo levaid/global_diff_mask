@@ -2,6 +2,8 @@ from torch import nn
 from custom_modules import MaskedConv2d, MaskedLinear
 from torch.nn import functional as F
 import torch
+import numpy as np
+import os
 
 
 class ConvNet(nn.Module):
@@ -92,3 +94,9 @@ class PrunerNetFlat(nn.Module):
         x = F.relu(x)
         x = self.fc2(x)
         return(x)
+
+
+def get_freer_gpu():
+    os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >tmp')
+    memory_available = [int(x.split()[2]) for x in open('tmp', 'r').readlines()]
+    return np.argmax(memory_available)
