@@ -12,22 +12,35 @@ import argparse
 from networks import ConvNet, PrunerNetFlat
 
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num_first_stage', required=True, type=int, help='Number of total epochs.')
 parser.add_argument('--initial_mode', required=True, type=str, help='Inital state of the network. Can be `mask`, `weight` or `both`.')
 parser.add_argument('--num_second_stage', required=True, type=int, help='Epoch in which to change behavior from mask to weight or vica-versa.')
-parser.add_argument('--discretize', default=False, type=bool, help='Whether to discretize when learning with the mask.')
+parser.add_argument('--discretize', default=False, type=str2bool, help='Whether to discretize when learning with the mask.')
 parser.add_argument('--discretization_method', default='from_weight', type=str, help='Discretization method. Can be `from_mask` and `from_weight`.')
 parser.add_argument('--discretization_quantile', default=0.5, type=float, help='Quantile for discretization.')
 parser.add_argument('--lr_net', default=0.0005, type=float, help='Learning rate for the original network.')
 parser.add_argument('--lr_mask', default=0.001, type=float, help='Learning rate of the mask.')
 parser.add_argument('--lr_pruner', default=0.0005, type=float, help='Learning rate of the pruner network.')
-parser.add_argument('--sigmoid', default=False, type=bool, help='Whether to sigmoid the masks. If true, then the masks are initialized at 0, else at 1.')
-parser.add_argument('--neptune', default=False, type=bool, help='Use Neptune.')
-parser.add_argument('--visualize', default=False, type=bool, help='Whether to create distribution plots every 50 batches.')
+parser.add_argument('--sigmoid', default=False, type=str2bool, help='Whether to sigmoid the masks. If true, then the masks are initialized at 0, else at 1.')
+parser.add_argument('--neptune', default=False, type=str2bool, help='Use Neptune.')
+parser.add_argument('--visualize', default=False, type=str2bool, help='Whether to create distribution plots every 50 batches.')
 
 
 args = vars(parser.parse_args())
+
+print(args)
 
 if args['neptune']:
     neptune.init(project_qualified_name='cucuska2/diffmask',
