@@ -136,16 +136,12 @@ for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop 
             net.set_learning_mode('weight')
             current_mode = 'weight'
             if args['discretize']:
-                quantile = 0.5
-                method = args['discretization_method']
-                net.discretize_layerwise_locally(quantile, method)
+                net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
                 print('stop')
         elif current_mode == 'weight':
             if args['discretize']:
-                quantile = 0.5
-                method = args['discretization_method']
-                net.discretize_layerwise_locally(quantile, method)
-                print('stop')
+                net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
+
             # net.set_learning_mode('mask')
             # current_mode = 'mask'
 
