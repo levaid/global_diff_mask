@@ -11,16 +11,20 @@ import neptune
 import argparse
 from networks import ConvNet, PrunerNetFlat
 
+
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--num_training_epochs', required=True, type=int, help='Number of total epochs.')
+parser.add_argument('--num_first_stage', required=True, type=int, help='Number of total epochs.')
 parser.add_argument('--initial_mode', required=True, type=str, help='Inital state of the network. Can be `mask`, `weight` or `both`.')
-parser.add_argument('--num_pruning_epochs', required=True, type=int, help='Epoch in which to change behavior from mask to weight or vica-versa.')
+parser.add_argument('--num_second_stage', required=True, type=int, help='Epoch in which to change behavior from mask to weight or vica-versa.')
 parser.add_argument('--discretize', default=False, type=bool, help='Whether to discretize when learning with the mask.')
+parser.add_argument('--discretization_method', default='from_weight', type=str, help='Discretization method. Can be `from_mask` and `from_weight`.')
+parser.add_argument('--discretization_quantile', default=0.5, type=float, help='Quantile for discretization.')
 parser.add_argument('--lr_net', default=0.0005, type=float, help='Learning rate for the original network.')
 parser.add_argument('--lr_mask', default=0.001, type=float, help='Learning rate of the mask.')
 parser.add_argument('--lr_pruner', default=0.0005, type=float, help='Learning rate of the pruner network.')
 parser.add_argument('--sigmoid', default=False, type=bool, help='Whether to sigmoid the masks. If true, then the masks are initialized at 0, else at 1.')
 parser.add_argument('--neptune', default=False, type=bool, help='Use Neptune.')
+parser.add_argument('--visualize', default=False, type=bool, help='Whether to create distribution plots every 50 batches.')
 
 
 args = vars(parser.parse_args())
@@ -64,8 +68,9 @@ for image in glob.glob('run_details/*.png'):
 
 current_mode = args['initial_mode']
 
-for epoch in range(args['num_training_epochs'] + args['num_pruning_epochs']):  # loop over the dataset multiple times
-    kbar = pkbar.Kbar(target=len(trainloader), epoch=epoch, num_epochs=args['num_epochs'], width=12, always_stateful=False)
+for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop over the dataset multiple times
+    kbar = pkbar.Kbar(target=len(trainloader), epoch=epoch, num_epochs=args['num_first_stage'] + args['num_second_stage'],
+                      width=12, always_stateful=False)
     running_loss_main = 0.0
     running_loss_pruner = 0.0
     loss_pruner = 0.0
@@ -85,6 +90,8 @@ for epoch in range(args['num_training_epochs'] + args['num_pruning_epochs']):  #
         loss_main = criterion(outputs, labels)
         outputs_by_activations = pruner_net(activations)
         loss_pruner = criterion(outputs_by_activations, labels)
+        if args['neptune']:
+            neptune.log_metric('mean_abs_activation', torch.mean(torch.abs(activations)))
         # we step with the pruner net if we are before the midpoint
         if current_mode == 'mask' or current_mode == 'both':
 
@@ -106,13 +113,28 @@ for epoch in range(args['num_training_epochs'] + args['num_pruning_epochs']):  #
         kbar.update(i, values=[("loss_main", loss_main), ('loss_pruner', loss_pruner)])
 
         current_iteration = i + epoch * len(trainloader)
-        if current_iteration % 50 == 0:
+
+        if current_iteration % 50 == 0 and args['visualize']:
             plot_mask_and_weight(net, current_iteration)
             plot_pruner(pruner_net, current_iteration)
 
-    if epoch == args['num_training_epochs'] - 1:
-        net.set_learning_mode('weight')
-        current_mode = 'weight'
+    if epoch == args['num_first_stage'] - 1:
+        if current_mode == 'mask':
+            net.set_learning_mode('weight')
+            current_mode = 'weight'
+            if args['discretize']:
+                quantile = 0.5
+                method = args['discretization_method']
+                net.discretize_layerwise_locally(quantile, method)
+                print('stop')
+        elif current_mode == 'weight':
+            if args['discretize']:
+                quantile = 0.5
+                method = args['discretization_method']
+                net.discretize_layerwise_locally(quantile, method)
+                print('stop')
+            # net.set_learning_mode('mask')
+            # current_mode = 'mask'
 
     correct_main = 0
     total = 0
@@ -149,5 +171,6 @@ for epoch in range(args['num_training_epochs'] + args['num_pruning_epochs']):  #
     kbar.add(1, values=[("val_loss_main", val_loss_main), ("val_acc_main", correct_main/total),
                         ('val_loss_pruner', val_loss_pruner), ('val_acc_pruner', correct_pruner/total)])
 
-neptune.stop()
+if args['neptune']:
+    neptune.stop()
 print('Finished Training')
