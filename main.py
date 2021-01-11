@@ -104,8 +104,7 @@ for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop 
         loss_main = criterion(outputs, labels)
         outputs_by_activations = pruner_net(activations)
         loss_pruner = criterion(outputs_by_activations, labels)
-        if args['neptune']:
-            neptune.log_metric('mean_abs_activation', torch.mean(torch.abs(activations)))
+
         # we step with the pruner net if we are before the midpoint
         if current_mode == 'mask' or current_mode == 'both':
 
@@ -123,12 +122,13 @@ for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop 
         if args['neptune']:
             neptune.log_metric('train_loss_main', loss_main.item())
             neptune.log_metric('train_loss_pruner', loss_pruner)
+            neptune.log_metric('mean_abs_activation', torch.mean(torch.abs(activations)))
 
         kbar.update(i, values=[("loss_main", loss_main), ('loss_pruner', loss_pruner)])
 
         current_iteration = i + epoch * len(trainloader)
 
-        if current_iteration % 50 == 0 and args['visualize']:
+        if current_iteration % 20 == 0 and args['visualize']:
             plot_mask_and_weight(net, current_iteration)
             plot_pruner(pruner_net, current_iteration)
 

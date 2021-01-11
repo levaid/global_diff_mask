@@ -22,8 +22,8 @@ def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
 
     plt.title(f'Masks\' distribution in iter {currentiter}')
     plt.legend()
-    plt.ylim((0, 2))
-    plt.xlim((-5, 6))
+    # plt.ylim((0, 2))
+    # plt.xlim((-5, 6))
     plt.savefig(f'run_details/iter_mask_{currentiter}.png', dpi=150)
 
     plt.figure(facecolor='w')
@@ -35,7 +35,7 @@ def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
 
     plt.title(f'Weights in epoch {currentiter}')
     plt.legend()
-    plt.xlim((-6, 6))
+    # plt.xlim((-6, 6))
     plt.savefig(f'run_details/iter_weight_{currentiter}.png', dpi=150)
     plt.close('all')
 
