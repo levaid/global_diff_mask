@@ -9,7 +9,9 @@ import time
 import glob
 import neptune
 import argparse
-from networks import ConvNet, PrunerNetFlat, get_freer_gpu
+import networks
+
+RUN_ID = time.strftime('%Y%m%d_%H%M%S')
 
 
 def str2bool(v):
@@ -36,7 +38,10 @@ parser.add_argument('--lr_pruner', default=0.0005, type=float, help='Learning ra
 parser.add_argument('--sigmoid', default=False, type=str2bool, help='Whether to sigmoid the masks. If true, then the masks are initialized at 0, else at 1.')
 parser.add_argument('--neptune', default=False, type=str2bool, help='Use Neptune.')
 parser.add_argument('--visualize', default=False, type=str2bool, help='Whether to create distribution plots every 50 batches.')
-
+parser.add_argument('--num_pretrain', default=0, type=int, help='Pretrain epochs on the network.')
+parser.add_argument('--save_pruner', default=False, type=str2bool, help='Whether to save pruner network.')
+parser.add_argument('--save_main', default=False, type=str2bool, help='Whether to save main network.')
+parser.add_argument('--train_masks', default=True, type=str2bool, help='Whether the pruning masks are trained.')
 
 args = vars(parser.parse_args())
 
@@ -51,21 +56,27 @@ BATCH_SIZE = 128
 
 trainloader, testloader = create_dataloaders(batch_size=BATCH_SIZE)
 
-freest_gpu = get_freer_gpu()
+freest_gpu = networks.get_freer_gpu()
 device = torch.device(f"cuda:{freest_gpu}" if torch.cuda.is_available() else "cpu")
 
-net = ConvNet(forward_type='flatten', sigmoid=args['sigmoid']).to(device)
+net = networks.ConvNetMasked(forward_type='flatten', sigmoid=args['sigmoid']).to(device)
 
 # magic number coming from the parameter count of convnet
-pruner_net = PrunerNetFlat(inputsize=8094).to(device)
+pruner_net = networks.PrunerNetFlat(inputsize=8094).to(device)
 
-net.set_learning_mode(args['initial_mode'])
 
 if args['neptune']:
-    neptune.create_experiment(name=time.strftime('%Y-%m-%d_%H:%M:%S'),
-                              description='last layer tests',
+    neptune.create_experiment(name=RUN_ID,
+                              description='',
                               params=args,
                               )
+
+if args['num_pretrain'] != 0:
+    current_mode = 'pretrain'
+    net.set_learning_mode('weight')
+else:
+    net.set_learning_mode(args['initial_mode'])
+    current_mode = args['initial_mode']
 
 mask_parameters = [p for n, p in net.named_parameters() if 'mask' in n]
 
@@ -79,18 +90,17 @@ optimizer_pruner = optim.Adam(pruner_net.parameters(), lr=args['lr_pruner'])
 for image in glob.glob('run_details/*.png'):
     os.remove(image)
 
+total_epochs = args['num_pretrain'] + args['num_first_stage'] + args['num_second_stage']
 
-current_mode = args['initial_mode']
+for epoch in range(total_epochs):  # loop over the dataset multiple times
+    kbar = pkbar.Kbar(target=len(trainloader), epoch=epoch, num_epochs=total_epochs, width=12, always_stateful=False)
 
-for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop over the dataset multiple times
-    kbar = pkbar.Kbar(target=len(trainloader), epoch=epoch, num_epochs=args['num_first_stage'] + args['num_second_stage'],
-                      width=12, always_stateful=False)
     running_loss_main = 0.0
     running_loss_pruner = 0.0
     loss_pruner = 0.0
 
-    if current_mode not in {'weight', 'mask', 'both'}:
-        raise(ValueError, 'current_mode must be mask, weight or both')
+    if current_mode not in {'pretrain', 'weight', 'mask', 'both'}:
+        raise(ValueError, 'current_mode must be mask, weight, pretrain or both')
 
     for i, data in enumerate(trainloader, 0):
         # get the inputs; data is a list of [inputs, labels]
@@ -106,16 +116,18 @@ for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop 
         loss_pruner = criterion(outputs_by_activations, labels)
 
         # we step with the pruner net if we are before the midpoint
-        if current_mode == 'mask' or current_mode == 'both':
+        if current_mode in {'mask', 'both'}:
 
             loss_pruner.backward()
             optimizer_pruner.step()
-            optimizer_mask.step()
+
+            if args['train_masks']:  # we only step if mask is trained
+                optimizer_mask.step()
 
             # print statistics
             running_loss_pruner += loss_pruner.item()
         # else we step on the main network with the masks frozen
-        if current_mode == 'weight' or current_mode == 'both':
+        if current_mode in {'weight', 'both', 'pretrain'}:
             loss_main.backward()
             optimizer_main.step()
 
@@ -132,7 +144,14 @@ for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop 
             plot_mask_and_weight(net, current_iteration)
             plot_pruner(pruner_net, current_iteration)
 
-    if epoch == args['num_first_stage'] - 1:
+    # AFTER PRETRAIN ENTER FIRST STAGE
+
+    if epoch == args['num_pretrain'] - 1:
+        net.set_learning_mode('mask')
+        current_mode = 'mask'
+
+    # AFTER FIRST STAGE ENTER SECOND STAGE
+    if epoch == args['num_pretrain'] + args['num_first_stage'] - 1:
         if current_mode == 'mask':
             net.set_learning_mode('weight')
             current_mode = 'weight'
@@ -180,6 +199,14 @@ for epoch in range(args['num_first_stage'] + args['num_second_stage']):  # loop 
 
     kbar.add(1, values=[("val_loss_main", val_loss_main), ("val_acc_main", correct_main/total),
                         ('val_loss_pruner', val_loss_pruner), ('val_acc_pruner', correct_pruner/total)])
+
+    # SAVING ROUTINES
+
+    if args['save_pruner']:
+        torch.save(pruner_net, f'networks/pruner_{RUN_ID}_{epoch:03}.pt')
+
+    if args['save_main']:
+        torch.save(pruner_net, f'networks/main_{RUN_ID}_{epoch:03}.pt')
 
 if args['neptune']:
     neptune.stop()

@@ -6,9 +6,9 @@ import numpy as np
 import os
 
 
-class ConvNet(nn.Module):
+class ConvNetMasked(nn.Module):
     def __init__(self, forward_type='simple', sigmoid=False):
-        super(ConvNet, self).__init__()
+        super(ConvNetMasked, self).__init__()
         self.conv1 = MaskedConv2d(3, 6, 5, sigmoid=sigmoid)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = MaskedConv2d(6, 16, 5, sigmoid=sigmoid)
@@ -69,6 +69,8 @@ class ConvNet(nn.Module):
             flow = (True, False)
         elif mode == 'both':
             flow = (True, True)
+        elif mode == 'freeze':
+            return
 
         for name, param in self.named_modules():
             if type(param) in [MaskedConv2d, MaskedLinear]:
@@ -81,6 +83,68 @@ class ConvNet(nn.Module):
             if type(param) in [MaskedConv2d, MaskedLinear]:
                 param.discretize_mask(quantile, how)
                 # print(f'{name} quantized to {mode}')
+
+
+class ConvNet(nn.Module):
+    def __init__(self, forward_type='simple', sigmoid=False):
+        super(ConvNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+        if forward_type == 'simple':
+            self.forward = self.forward_simple
+        elif forward_type == 'flatten':
+            self.forward = self.forward_flatten
+        else:
+            raise NotImplementedError
+
+    def forward_simple(self, x):
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.pool(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = self.pool(x)
+        x = x.view(-1, 16 * 5 * 5)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
+        x = F.relu(x)
+        x = self.fc3(x)
+        return x
+
+    def forward_flatten(self, x):
+        activations = []
+        x = self.conv1(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        x = F.relu(x)
+        x = self.pool(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        x = self.conv2(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        x = F.relu(x)
+        x = self.pool(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        x = x.view(-1, 16 * 5 * 5)
+        x = self.fc1(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        x = F.relu(x)
+        x = self.fc2(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        x = F.relu(x)
+        x = self.fc3(x)
+        activations.append(torch.flatten(x, start_dim=1))
+        return x, torch.cat(activations, dim=1)
+
+    def set_learning_mode(self, mode: str):
+        pass
+
+    def discretize_layerwise_locally(self, quantile: float, how: str):
+        pass
 
 
 class PrunerNetFlat(nn.Module):
