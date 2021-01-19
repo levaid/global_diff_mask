@@ -203,10 +203,10 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
     # SAVING ROUTINES
 
     if args['save_pruner']:
-        torch.save(pruner_net, f'networks/pruner_{RUN_ID}_{epoch:03}.pt')
+        torch.save(pruner_net.state_dict(), f'networks/pruner_{RUN_ID}_{epoch:03}_state_dict.pt')
 
     if args['save_main']:
-        torch.save(pruner_net, f'networks/main_{RUN_ID}_{epoch:03}.pt')
+        torch.save(net.state_dict(), f'networks/main_{RUN_ID}_{epoch:03}_state_dict.pt')
 
 if args['neptune']:
     neptune.stop()
