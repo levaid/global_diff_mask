@@ -200,6 +200,8 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
     kbar.add(1, values=[("val_loss_main", val_loss_main), ("val_acc_main", correct_main/total),
                         ('val_loss_pruner', val_loss_pruner), ('val_acc_pruner', correct_pruner/total)])
 
+
+else:
     # SAVING ROUTINES
 
     if args['save_pruner']:
