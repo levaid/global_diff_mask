@@ -17,8 +17,9 @@ def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
     for name, param in net.named_modules():
         if type(param) in [MaskedConv2d, MaskedLinear]:
             data = param.mask.detach().cpu().numpy().flatten()
-            x, y = KDEpy.FFTKDE(bw=0.1).fit(data).evaluate()
-            plt.plot(x, y, label=name)
+            # x, y = KDEpy.FFTKDE(bw=0.1).fit(data).evaluate()
+            # plt.plot(x, y, label=name)
+            plt.hist(data, label=name, histtype='step', bins=100, cumulative=False, density=True)
 
     plt.title(f'Masks\' distribution in iter {currentiter}')
     plt.legend()
@@ -32,6 +33,7 @@ def plot_mask_and_weight(net: torch.nn.Module, current_iteration: int):
             data = param.weight.detach().cpu().numpy().flatten()
             x, y = KDEpy.FFTKDE(bw=0.1).fit(data).evaluate()
             plt.plot(x, y, label=name)
+            # plt.hist(data, label=name)
 
     plt.title(f'Weights in epoch {currentiter}')
     plt.legend()

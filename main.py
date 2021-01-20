@@ -10,6 +10,7 @@ import glob
 import neptune
 import argparse
 import networks
+import numpy as np
 
 RUN_ID = time.strftime('%Y%m%d_%H%M%S')
 
@@ -62,7 +63,7 @@ device = torch.device(f"cuda:{freest_gpu}" if torch.cuda.is_available() else "cp
 net = networks.ConvNetMasked(forward_type='flatten', sigmoid=args['sigmoid']).to(device)
 
 # magic number coming from the parameter count of convnet
-pruner_net = networks.PrunerNetFlat(inputsize=8094).to(device)
+pruner_net = networks.PrunerNetFlat(inputsize=6518).to(device)
 
 
 if args['neptune']:
@@ -91,6 +92,7 @@ for image in glob.glob('run_details/*.png'):
     os.remove(image)
 
 total_epochs = args['num_pretrain'] + args['num_first_stage'] + args['num_second_stage']
+checkpoints = set(np.cumsum([args['num_pretrain'], args['num_first_stage'], args['num_second_stage']])-1)
 
 for epoch in range(total_epochs):  # loop over the dataset multiple times
     kbar = pkbar.Kbar(target=len(trainloader), epoch=epoch, num_epochs=total_epochs, width=12, always_stateful=False)
@@ -140,12 +142,11 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
 
         current_iteration = i + epoch * len(trainloader)
 
-        if current_iteration % 20 == 0 and args['visualize']:
+        if current_iteration % 100 == 0 and args['visualize']:
             plot_mask_and_weight(net, current_iteration)
             plot_pruner(pruner_net, current_iteration)
 
     # AFTER PRETRAIN ENTER FIRST STAGE
-
     if epoch == args['num_pretrain'] - 1:
         net.set_learning_mode('mask')
         current_mode = 'mask'
@@ -156,11 +157,12 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
             net.set_learning_mode('weight')
             current_mode = 'weight'
             if args['discretize']:
-                net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
-                print('stop')
+                # net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
+                net.discretize_globally(args['discretization_quantile'], args['discretization_method'])
         elif current_mode == 'weight':
             if args['discretize']:
-                net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
+                net.discretize_globally(args['discretization_quantile'], args['discretization_method'])
+                # net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
 
             # net.set_learning_mode('mask')
             # current_mode = 'mask'
@@ -200,15 +202,14 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
     kbar.add(1, values=[("val_loss_main", val_loss_main), ("val_acc_main", correct_main/total),
                         ('val_loss_pruner', val_loss_pruner), ('val_acc_pruner', correct_pruner/total)])
 
-
-else:
     # SAVING ROUTINES
+    if epoch in checkpoints:
 
-    if args['save_pruner']:
-        torch.save(pruner_net.state_dict(), f'networks/pruner_{RUN_ID}_{epoch:03}_state_dict.pt')
+        if args['save_pruner']:
+            torch.save(pruner_net.state_dict(), f'networks/pruner_{RUN_ID}_{epoch:03}_state_dict.pt')
 
-    if args['save_main']:
-        torch.save(net.state_dict(), f'networks/main_{RUN_ID}_{epoch:03}_state_dict.pt')
+        if args['save_main']:
+            torch.save(net.state_dict(), f'networks/main_{RUN_ID}_{epoch:03}_state_dict.pt')
 
 if args['neptune']:
     neptune.stop()

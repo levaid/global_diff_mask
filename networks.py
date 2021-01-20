@@ -44,12 +44,12 @@ class ConvNetMasked(nn.Module):
         activations.append(torch.flatten(x, start_dim=1))
         x = F.relu(x)
         x = self.pool(x)
-        activations.append(torch.flatten(x, start_dim=1))
+        # activations.append(torch.flatten(x, start_dim=1))
         x = self.conv2(x)
         activations.append(torch.flatten(x, start_dim=1))
         x = F.relu(x)
         x = self.pool(x)
-        activations.append(torch.flatten(x, start_dim=1))
+        # activations.append(torch.flatten(x, start_dim=1))
         x = x.view(-1, 16 * 5 * 5)
         x = self.fc1(x)
         activations.append(torch.flatten(x, start_dim=1))
@@ -81,7 +81,21 @@ class ConvNetMasked(nn.Module):
 
         for name, param in self.named_modules():
             if type(param) in [MaskedConv2d, MaskedLinear]:
-                param.discretize_mask(quantile, how)
+                param.discretize_with_quantile(quantile, how)
+                # print(f'{name} quantized to {mode}')
+
+    def discretize_globally(self, quantile: float, how: str):
+        if how == 'from_mask':
+            threshold = torch.quantile(input=torch.cat([param.flatten() for name, param in self.state_dict().items() if 'mask' in name]), q=quantile)
+        elif how == 'from_weight':
+            threshold = torch.quantile(input=torch.cat([param.flatten() for name, param in self.state_dict().items() if 'weight' in name]), q=quantile)
+        else:
+            raise(NotImplementedError, 'you have to choose either `from_mask` or `from_weight`')
+
+        # print(f'Global threshold is {threshold}')
+        for name, param in self.named_modules():
+            if type(param) in [MaskedConv2d, MaskedLinear]:
+                param.discretize_with_threshold(threshold, how=how)
                 # print(f'{name} quantized to {mode}')
 
 
