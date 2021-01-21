@@ -43,6 +43,7 @@ parser.add_argument('--num_pretrain', default=0, type=int, help='Pretrain epochs
 parser.add_argument('--save_pruner', default=False, type=str2bool, help='Whether to save pruner network.')
 parser.add_argument('--save_main', default=False, type=str2bool, help='Whether to save main network.')
 parser.add_argument('--train_masks', default=True, type=str2bool, help='Whether the pruning masks are trained.')
+parser.add_argument('--pruning_location', default='global', type=str, help='Chooses between the modes `global` and `layerwise`.')
 
 args = vars(parser.parse_args())
 
@@ -157,6 +158,7 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
             net.set_learning_mode('weight')
             current_mode = 'weight'
             if args['discretize']:
+
                 # net.discretize_layerwise_locally(args['discretization_quantile'], args['discretization_method'])
                 net.discretize_globally(args['discretization_quantile'], args['discretization_method'])
         elif current_mode == 'weight':
