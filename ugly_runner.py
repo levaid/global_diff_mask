@@ -5,6 +5,11 @@ import multiprocessing
 from multiprocessing.dummy import Pool
 import time
 import threading
+import networks
+import os
+
+# correct ordering of cards
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 
 
 def init(lock):
@@ -35,12 +40,13 @@ cmdline_form_arguments = [[arg for pair in [(f'--{k}', str(v)) for k, v in param
 def run_with_args(cmdline_args):
     starting.acquire()  # no other process can get it until it is released
     threading.Timer(10, starting.release).start()
-    subprocess.run(['python', 'main.py'] + cmdline_args)
+    freest_gpu = networks.get_freer_gpu()
+    subprocess.run(['python', 'main.py'] + cmdline_args + ['--gpu', str(freest_gpu)])
 
 
 p = Pool(processes=3,
          initializer=init, initargs=[multiprocessing.Lock()])
 
-for output, error in p.imap(run_with_args, cmdline_form_arguments):
+for _ in p.imap(run_with_args, cmdline_form_arguments):
     time.sleep(3)
     pass

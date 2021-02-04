@@ -44,6 +44,7 @@ parser.add_argument('--save_pruner', default=False, type=str2bool, help='Whether
 parser.add_argument('--save_main', default=False, type=str2bool, help='Whether to save main network.')
 parser.add_argument('--train_masks', default=True, type=str2bool, help='Whether the pruning masks are trained.')
 parser.add_argument('--pruning_location', default='global', type=str, help='Chooses between the modes `global` and `layerwise`.')
+parser.add_argument('--gpu', default='0', type=str, help='GPU to run on.')
 
 args = vars(parser.parse_args())
 
@@ -58,8 +59,8 @@ BATCH_SIZE = 128
 
 trainloader, testloader = create_dataloaders(batch_size=BATCH_SIZE)
 
-freest_gpu = networks.get_freer_gpu()
-device = torch.device(f"cuda:{freest_gpu}" if torch.cuda.is_available() else "cpu")
+
+device = torch.device(f"cuda:{args['gpu']}" if torch.cuda.is_available() else "cpu")
 
 net = networks.ConvNetMasked(forward_type='flatten', sigmoid=args['sigmoid']).to(device)
 
@@ -117,7 +118,6 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
         loss_main = criterion(outputs, labels)
         outputs_by_activations = pruner_net(activations)
         loss_pruner = criterion(outputs_by_activations, labels)
-
         # we step with the pruner net if we are before the midpoint
         if current_mode in {'mask', 'both'}:
 
