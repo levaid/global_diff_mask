@@ -86,9 +86,9 @@ class ConvNetMasked(nn.Module):
 
     def discretize_globally(self, quantile: float, how: str):
         if how == 'from_mask':
-            threshold = torch.quantile(input=torch.cat([param.flatten() for name, param in self.state_dict().items() if 'mask' in name]), q=quantile)
+            threshold = torch.quantile(input=torch.cat([torch.abs(param.flatten()) for name, param in self.state_dict().items() if 'mask' in name]), q=quantile)
         elif how == 'from_weight':
-            threshold = torch.quantile(input=torch.cat([param.flatten() for name, param in self.state_dict().items() if 'weight' in name]), q=quantile)
+            threshold = torch.quantile(input=torch.cat([torch.abs(param.flatten()) for name, param in self.state_dict().items() if 'weight' in name]), q=quantile)
         else:
             raise(NotImplementedError, 'you have to choose either `from_mask` or `from_weight`')
 

@@ -197,9 +197,19 @@ for epoch in range(total_epochs):  # loop over the dataset multiple times
                 neptune.log_metric('valid_loss_main', loss_main.item())
                 neptune.log_metric('valid_loss_pruner', loss_pruner.item())
 
+        masked_ratio = 0
+        total_params, remaining_params = 0, 0
+        for name, param in net.named_modules():
+            if type(param) in [networks.MaskedConv2d, networks.MaskedLinear]:
+                # print(torch.mean((param.mask.data != 0.).float()))
+                total_params += np.prod(list(param.weight.shape))
+                remaining_params += (param.mask.data != 0.).sum().cpu()
+                # param.weight.shape()
+
     if args['neptune']:
         neptune.log_metric('valid_acc_main', correct_main/total)
         neptune.log_metric('valid_acc_pruner', correct_pruner/total)
+        neptune.log_metric('params_remaining', remaining_params/total_params)
 
     kbar.add(1, values=[("val_loss_main", val_loss_main), ("val_acc_main", correct_main/total),
                         ('val_loss_pruner', val_loss_pruner), ('val_acc_pruner', correct_pruner/total)])
